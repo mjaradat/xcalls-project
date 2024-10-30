@@ -1,47 +1,40 @@
 // src/calls/outboundCallHandler.ts
-import { Inviter, SessionState, UserAgent } from "sip.js";
-import { useCallStore } from "../stores/callStore";
+import { UserAgent, Inviter, SessionState } from 'sip.js'
+import { useCallStore } from '../stores/callStore'
 
-export function initiateOutboundCall(
-  ua: UserAgent,
-  targetURI: string,
-  audioElement: HTMLAudioElement
-) {
-  const callStore = useCallStore();
-  const inviter = new Inviter(ua, UserAgent.makeURI(targetURI)!);
-  callStore.setCallSession(inviter);
-  callStore.updateCallState(SessionState.Establishing);
+export async function initiateOutboundCall(userAgent: UserAgent, targetURI: string, audioElement: HTMLAudioElement) {
+  const callStore = useCallStore()
+  callStore.startCall()
 
-  inviter
-    .invite({
-      sessionDescriptionHandlerOptions: {
-        constraints: { audio: true, video: false },
-      },
+  const inviter = new Inviter(userAgent, UserAgent.makeURI(targetURI)!)
+
+  inviter.stateChange.addListener(newState => {
+    switch (newState) {
+      case SessionState.Established:
+        console.log('initiateOutboundCall', newState)
+        callStore.callStatus = 'in progress'
+        setupOutboundAudio(audioElement)
+        break
+      case SessionState.Terminated:
+        console.log('initiateOutboundCall', newState)
+        callStore.endCall('answered')
+        break
+    }
+  })
+
+  function setupOutboundAudio(audioElement: HTMLAudioElement) {
+    inviter.sessionDescriptionHandler?.on('trackAdded', () => {
+      const pc = inviter.sessionDescriptionHandler?.peerConnection
+      const remoteStream = new MediaStream()
+
+      pc?.getReceivers().forEach((receiver: RTCRtpReceiver) => {
+        if (receiver.track) remoteStream.addTrack(receiver.track)
+      })
+
+      audioElement.srcObject = remoteStream
     })
-    .then(() => {
-      inviter.stateChange.addListener((newState) => {
-        callStore.updateCallState(newState);
-        if (newState === SessionState.Established) {
-          console.log("Outbound call established");
-          setupOutboundAudio(inviter, audioElement);
-        } else if (newState === SessionState.Terminated) {
-          callStore.resetCall();
-          console.log("Outbound call ended");
-        }
-      });
-    })
-    .catch((error) => console.error("Failed to make outbound call:", error));
-}
+  }
 
-function setupOutboundAudio(inviter: Inviter, audioElement: HTMLAudioElement) {
-  inviter.sessionDescriptionHandler?.on("trackAdded", () => {
-    const pc = inviter.sessionDescriptionHandler?.peerConnection;
-    const remoteStream = new MediaStream();
-
-    pc?.getReceivers().forEach((receiver) => {
-      if (receiver.track) remoteStream.addTrack(receiver.track);
-    });
-
-    audioElement.srcObject = remoteStream;
-  });
+  await inviter.invite()
+  return inviter
 }

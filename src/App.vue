@@ -1,89 +1,101 @@
 <template>
   <div id="app">
-    <h1>Audio Call App</h1>
+    <h1>Call App</h1>
 
-    callState: {{ callState }} <br />
-    callSession: {{ callSession }} <br />
-    isInCall: {{ isInCall }} <br />
-    <div v-if="!isConnected">
-      <button @click="connect">Connect to SIP Server</button>
+    <div v-if="!ua?.isConnected()">
+      <button @click="connectToSIP">Connect</button>
     </div>
     <div v-else>
-      <DialPad :onCall="makeCall" />
-      <button v-if="isInCall" @click="endCall">End Call</button>
-      <p v-if="callState">Call Status: {{ callState }}</p>
+      <DialPad :onCall="makeOutboundCall" />
+      <button v-if="isInCall" @click="endCurrentCall">End Call</button>
+      <p v-if="callStatus">Call Status: {{ callStatus }}</p>
+      <div v-if="incomingCall">
+        <p>Incoming Call</p>
+        <button @click="answerCall">Answer</button>
+        <button @click="rejectCall">Reject</button>
+      </div>
     </div>
+    <h2>Call Logs</h2>
+    <ul>
+      <li v-for="log in callLogs" :key="log.startTime.toString()">{{ log.status }} ({{ log.duration }} seconds)</li>
+    </ul>
     <audio ref="audioElement" autoplay></audio>
   </div>
 </template>
 
-<script lang="ts" setup>
-import { defineAsyncComponent, Ref, ref, toRefs } from "vue";
-import { useCallStore } from "./stores/callStore";
-import { initiateOutboundCall } from "./calls/outboundCallHandler";
-import { handleInboundCall } from "./calls/inboundCallHandler";
-import { Invitation, Registerer, UserAgent } from "sip.js";
+<script lang="ts">
+import { defineComponent, Ref, ref } from 'vue'
+import { UserAgent, Invitation } from 'sip.js'
+import { useCallStore } from './stores/callStore'
+import { initiateOutboundCall } from './calls/outboundCallHandler'
+import { handleInboundCall } from './calls/inboundCallHandler'
+import DialPad from './components/DialPad.vue'
 
-const callStore = useCallStore();
+export default defineComponent({
+  name: 'App',
+  components: { DialPad },
+  setup() {
+    const callStore = useCallStore()
+    const incomingCall = ref(null as any)
+    const ua = ref(null) as Ref<UserAgent | null>
+    const audioElement = ref(null) as Ref<HTMLAudioElement | null>
 
-const { isInCall, callState, callSession } = toRefs(callStore);
-const isConnected = ref(false);
-const targetNumber = ref("");
-const ua = ref(null) as Ref<UserAgent | null>;
-const audioElement = ref(null) as Ref<HTMLAudioElement | null>;
+    const connectToSIP = () => {
+      const configuration = {
+        uri: UserAgent.makeURI('sip:101@sip.xtrevo.com'),
+        transportOptions: {
+          server: 'wss://sip.xtrevo.com:8443/asterisk-wss'
+        },
+        authorizationUsername: '101',
+        authorizationPassword: 'severalleddepend8912@@'
+      }
 
-const connect = () => {
-  const configuration = {
-    uri: UserAgent.makeURI("sip:101@sip.xtrevo.com"),
-    transportOptions: {
-      server: "wss://sip.xtrevo.com:8443/asterisk-wss",
-    },
-    authorizationUsername: "101",
-    authorizationPassword: "severalleddepend8912@@",
-  };
+      ua.value = new UserAgent(configuration)
+      ua.value.start()
 
-  ua.value = new UserAgent(configuration);
-  ua.value.start();
+      ua.value.delegate = {
+        onInvite: (invitation: Invitation) => {
+          incomingCall.value = handleInboundCall(invitation, audioElement.value!)
+        },
+        onConnect: () => {
+          console.log(' >>>>>>>>>>>> Connected')
+        }
+      }
+    }
 
-  const registerer = new Registerer(ua.value);
-  registerer
-    .register()
-    .then(() => {
-      isConnected.value = true;
-      console.log("Connected to SIP server");
-    })
-    .catch((error) => {
-      console.error("Failed to register to SIP server:", error);
-    });
+    const makeOutboundCall = (target: string) => {
+      if (ua.value && audioElement.value) {
+        initiateOutboundCall(ua.value, `sip:${target}@sip.xtrevo.com`, audioElement.value)
+      }
+    }
 
-  ua.value.delegate = {
-    onInvite: (invitation: Invitation) => {
-      if (audioElement.value) handleInboundCall(invitation, audioElement.value);
-    },
-  };
-};
+    const answerCall = () => {
+      incomingCall.value?.answer()
+      incomingCall.value = null
+    }
 
-const makeCall = (target: string) => {
-  targetNumber.value = target;
-  if (!ua.value || !audioElement.value) return;
-  const targetURI = `sip:${target}@sip.xtrevo.com`;
-  initiateOutboundCall(ua.value, targetURI, audioElement.value);
-};
+    const rejectCall = () => {
+      incomingCall.value?.reject()
+      incomingCall.value = null
+    }
 
-const endCall = () => {
-  callStore.resetCall();
-};
+    const endCurrentCall = () => {
+      callStore.endCall('answered')
+    }
 
-const DialPad = defineAsyncComponent(() => import("./components/DialPad.vue"));
-const CounterComponent = defineAsyncComponent(
-  () => import("./components/CounterComponent.vue")
-);
+    return {
+      connectToSIP,
+      makeOutboundCall,
+      answerCall,
+      rejectCall,
+      endCurrentCall,
+      isInCall: callStore.isInCall,
+      callStatus: callStore.callStatus,
+      callLogs: callStore.callLogs,
+      incomingCall,
+      audioElement,
+      ua
+    }
+  }
+})
 </script>
-
-<style scoped>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  text-align: center;
-  margin-top: 60px;
-}
-</style>

@@ -2,14 +2,15 @@
 <template>
   <div class="dial-pad">
     <!-- Display the phone number -->
-    {{ phoneNumber }}
     <input v-model="phoneNumber" type="text" />
 
     <!-- Number buttons -->
     <div class="digits">
-      <button v-for="digit in digits" :key="digit" @click="addDigit(digit)">
-        {{ digit }}
-      </button>
+      <div v-for="(digitGroup, idx) in digits" class="digit-group" :key="`digit-group-${idx}`">
+        <button v-for="digit in digitGroup" :key="`digit-${idx}-${digit}`" @click="addDigit(digit)">
+          {{ digit }}
+        </button>
+      </div>
     </div>
 
     <!-- Call and Clear buttons -->
@@ -21,32 +22,32 @@
 </template>
 <!-- 0502450637 -->
 <script lang="ts" setup>
-import { PropType, ref, toRefs } from "vue";
+import { PropType, ref, toRefs } from 'vue'
 const props = defineProps({
   onCall: {
     type: Function as PropType<(target: string) => void>,
-    required: true,
-  },
-});
-const { onCall } = toRefs(props);
-const phoneNumber = ref(""),
-  digits = ref(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]);
+    required: true
+  }
+})
+const { onCall } = toRefs(props)
+const phoneNumber = ref(''),
+  digits = ref([['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['0']])
 
 // Add a digit to the phone number
 const addDigit = (digit: string) => {
-  phoneNumber.value += digit;
-};
+  phoneNumber.value += digit
+}
 // Trigger the onCall function with the phone number
 const makeCall = () => {
   if (phoneNumber.value) {
-    onCall.value(phoneNumber.value);
-    phoneNumber.value = ""; // Clear after making the call
+    onCall.value(phoneNumber.value)
+    phoneNumber.value = '' // Clear after making the call
   }
-};
+}
 // Clear the phone number
 const clearPhoneNumber = () => {
-  phoneNumber.value = "";
-};
+  phoneNumber.value = ''
+}
 </script>
 
 <style scoped>
@@ -63,8 +64,19 @@ const clearPhoneNumber = () => {
 }
 
 .digits {
-  display: grid;
-  grid-template-columns: repeat(3, 50px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  flex-wrap: wrap;
+  margin: 10px;
+  gap: 10px;
+}
+
+.digit-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
 }
 
